@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="ceb">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2026 Duty Schedule & Telegram Dashboard</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f4f6f8; color: #222; }
+    h1 { text-align: center; margin: 16px 0 4px; font-size: 22px; }
+    .controls { text-align: center; margin: 10px; }
+    .controls select, .controls input, .controls button {
+      padding: 6px 10px; font-size: 14px; margin: 0 4px;
+    }
+    button.main { background: #1f3864; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 6px 12px; }
+    button.ok { background: #2e7d32; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 6px 12px; }
+    button.warn { background: #b71c1c; color: white; border: none; border-radius: 4px; cursor: pointer; padding: 6px 12px; }
+    .wrap { overflow-x: auto; padding: 0 10px 20px; }
+    table { border-collapse: collapse; margin: 0 auto; background: white; font-size: 12px; }
+    th, td { border: 1px solid #000; padding: 4px 3px; text-align: center; white-space: nowrap; }
+    th { background: #1f3864; color: white; }
+    th.wknd { background: #c00000; }
+    td.left { text-align: left; padding-left: 6px; }
+    td.name { font-weight: bold; }
+    td.sig { min-width: 110px; }
+    .night { background: #bfbfbf; }
+    .day { background: #ffffff; }
+    .ABS { background: #b71c1c; color: white; font-weight: bold; }
+    .cover { outline: 2px solid #000; outline-offset: -2px; font-weight: bold; }
+    .panel { max-width: 900px; margin: 0 auto 30px; background: white; padding: 16px 20px;
+             border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    .panel h2 { margin-top: 0; font-size: 18px; }
+    .panel select { padding: 6px 10px; font-size: 14px; margin-right: 6px; }
+    .rec { border: 1px solid #ccc; border-radius: 6px; padding: 10px; margin: 10px 0; }
+    .rec.top { border-color: #2e7d32; background: #f1f8f1; }
+    .small { font-size: 12px; color: #555; }
+    .msg { padding: 10px; border-radius: 6px; margin-top: 10px; background: #fff3cd; }
+
+    /* ===== Toolbar (Excel-like) - parehas sa imong dashboard ===== */
+    .toolbar { background: #eef2f7; border: 1px solid #d1d5db; padding: 8px; margin: 10px auto; max-width: 98%;
+               border-radius: 6px; font-size: 13px; }
+    .toolbar .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
+    .toolbar button { padding: 5px 10px; font-size: 13px; border: 1px solid #b0bec5; background: white;
+                      border-radius: 4px; cursor: pointer; }
+    .toolbar button:hover { background: #e2e8f0; }
+    .toolbar button.main { background: #1f3864; color: white; border: none; }
+    .toolbar button.main:hover { background: #152747; }
+    .toolbar select, .toolbar input[type=number] { padding: 4px 6px; font-size: 13px; border: 1px solid #b0bec5;
+                                                   border-radius: 3px; background: #fff; }
+    .toolbar input[type=number] { width: 52px; cursor: text; }
+    .color-picker-wrapper { display: inline-flex; align-items: center; border: 1px solid #b0bec5; border-radius: 3px;
+                            background: white; padding: 2px 4px; }
+    .color-picker-wrapper input[type="color"] { border: none; width: 22px; height: 22px; cursor: pointer; background: none; padding: 0; }
+    .toolbar .lbl { color: #555; font-size: 12px; }
+    .toolbar .sep { width: 1px; height: 22px; background: #cbd5e1; margin: 0 4px; }
+
+    /* ===== Telegram Control Bar ===== */
+    .alert-bar { display: flex; gap: 10px; justify-content: center; padding: 10px; background: #fff;
+                 border: 1px solid #cbd5e1; border-radius: 6px; max-width: 98%; margin: 10px auto; align-items: center; }
+    .btn-alert { background: #f59e0b; color: #0f172a; font-weight: bold; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; }
+    .btn-esc { background: #ef4444; color: #fff; font-weight: bold; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; }
+    .btn-alert:hover { background: #d97706; }
+    .btn-esc:hover { background: #dc2626; }
+    .tg-status { font-size: 12px; color: #2e7d32; font-weight: bold; margin-left: 10px; }
+    
+    td[data-id] { cursor: cell; }
+    td.selc { outline: 3px solid #2563eb !important; outline-offset: -3px; }
+    td.hasc { position: relative; }
+    td.hasc::after { content: ""; position: absolute; top: 0; right: 0; border-top: 9px solid #dc2626; border-left: 9px solid transparent; }
+    #ctx { position: fixed; z-index: 100; background: #fff; border: 1px solid #94a3b8; border-radius: 6px;
+           box-shadow: 0 4px 14px rgba(0,0,0,.25); display: none; font-size: 13px; min-width: 210px; }
+    #ctx div { padding: 7px 12px; cursor: pointer; }
+    #ctx div:hover { background: #e2e8f0; }
+    #ctx hr { margin: 2px 0; border: 0; border-top: 1px solid #e2e8f0; }
+    .dsm-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 200; display: flex; align-items: center; justify-content: center; }
+    .dsm { background: #fff; border-radius: 10px; padding: 20px; width: min(480px, 92vw); max-height: 88vh; overflow: auto; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+    .dsm h3 { margin: 0 0 10px; }
+    .dsm label { display: block; margin: 8px 0 3px; font-weight: bold; font-size: 13px; }
+    .dsm input, .dsm select, .dsm textarea { width: 100%; box-sizing: border-box; padding: 7px; border: 1px solid #94a3b8; border-radius: 5px; font-size: 14px; }
+    .dsm .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+    .dsm .btns button { padding: 7px 14px; border-radius: 5px; border: 1px solid #94a3b8; background: #fff; cursor: pointer; }
+    .dsm .btns button.go { background: #1f3864; color: #fff; border-color: #1f3864; }
+
+    @media print {
+      .controls, .panel, .toolbar, .alert-bar, #ctx { display: none; }
+      body { background: white; }
+      td.selc { outline: none !important; }
+      @page { size: landscape; margin: 8mm; }
+    }
+  </style>
+</head>
+<body>
+  <h1 id="title"></h1>
+  <div class="controls">
+    <select id="month"></select>
+    <input id="year" type="number" value="2026" style="width:80px">
+    <button class="main" id="print">I-print</button>
+  </div>
+
+  <!-- ===== Toolbar ===== -->
+  <div class="toolbar" id="tb">
+    <div class="row">
+      <button class="main" id="b-add">+ Add Guard</button>
+      <button class="main" id="b-cmt">Insert Comment</button>
+      <button id="b-cmts">Comments</button>
+      <button id="b-undo">Undo</button>
+      <button id="b-hidden">Gitago (0)</button>
+      <button id="b-resetfmt" title="Tangtangon ang format, text edit, ug manual comments sa bulan nga kini">Reset format sa bulan</button>
+      <button id="b-edit">Edit Guard</button>
+    </div>
+    <div class="row">
+      <select id="f-font"><option value="">Font</option>
+        <option>Arial</option><option>Calibri</option><option>Segoe UI</option><option>Tahoma</option><option>Times New Roman</option><option>Verdana</option><option>Courier New</option><option>Georgia</option></select>
+      <select id="f-size"><option value="">Size</option><option>9</option><option>10</option><option>11</option><option>12</option><option>13</option><option>14</option><option>16</option><option>18</option><option>20</option><option>24</option></select>
+      <button id="f-b" style="font-weight:bold">B</button><button id="f-i" style="font-style:italic">I</button><button id="f-u" style="text-decoration:underline">U</button>
+      <label class="color-picker-wrapper">Text: <input type="color" id="f-color" value="#000000"></label>
+      <label class="color-picker-wrapper">Fill: <input type="color" id="f-fill" value="#ffff00"></label>
+      <button id="f-nofill">Ø Fill</button>
+      <button id="f-clear">Clear format</button>
+      <span class="sep"></span>
+      <button id="a-l">⬅</button><button id="a-c">↔</button><button id="a-r">➡</button>
+      <select id="f-border"><option value="">Border</option><option value="thin">Nipis</option><option value="thick">Baga</option><option value="none">Walay border</option></select>
+    </div>
+    <div class="row" style="font-size:12px;color:#555;">
+      Gilapdon sa column: <input type="number" id="w-col" min="0" placeholder="px"><button id="w-colgo">Apply</button>
+      Taas sa row: <input type="number" id="w-row" min="0" placeholder="px"><button id="w-rowgo">Apply</button>
+      <span class="sep"></span>
+      <button id="r-up">Row ⬆</button><button id="r-down">Row ⬇</button><button id="r-del">Row ✖ (Tagoa)</button>
+    </div>
+    <div class="row small">Tip: Click ang cell para pilion (drag o Shift+click para daghan, Ctrl+click para magkalahi). <b>Double-click</b> (o F2 / Enter) = i-edit diha mismo sa cell: <b>POST/NAME</b> i-type, <b>SHIFT</b> pili Day o Night. <b>Right-click</b> = menu.</div>
+  </div>
+
+  <!-- Telegram Control Bar -->
+  <div class="alert-bar">
+    <span style="align-self: center; font-weight: bold;">Telegram Control:</span>
+    <button class="btn-alert" onclick="sendQuickAlert('vacancy')">🚨 I-trigger ang Shift Vacancy</button>
+    <button class="btn-esc" onclick="sendQuickAlert('escalation')">⚡ I-trigger ang Escalation</button>
+    <span id="tgStatus" class="tg-status">● Nakapaminaw sa Telegram...</span>
+  </div>
+
+  <div class="wrap"><table id="sched"></table></div>
+
+  <div class="panel">
+    <h2>Absent? Pangitaa ang ilis</h2>
+    <select id="absGuard"></select>
+    <select id="absDay"></select>
+    <button class="main" id="findBtn">Pangitaa ang ilis</button>
+    <button class="warn" id="clearBtn">Ibalik ang tanan sa orihinal</button>
+    <div id="result"></div>
+    <p class="small">
+      Mga lagda sa recommend: (1) ang ilis kinahanglan naa sa <b>DO o RD</b> niadtong adlawa;
+      (2) mas taas ang puntos kung <b>pareho ang shift</b>, <b>pareho ang post</b>, ug kung nag-duty na siya sa <b>pareho nga duty code</b>;
+      (3) ang <b>Reliever</b> naay dugang nga puntos. Mo-hatag kini ug hangtod <b>3 ka pilian</b>: kung kulang ang naa sa DO o RD, dugangan kini ug <b>OT</b> nga pilian gikan sa mga guard nga lahi ang shift.
+      Ang OT (4 o 8 ka oras kada guard) imong i-aprub <b>kada guard</b>, ug pilion nimo kung pila ka guard ang i-extend, hangtod matabunan ang 12 ka oras. Walay molapas og 24 ka oras.
+      Ang <b>standby</b> nga guard (gidugang gamit ang Add Guard) walay fix nga duty; mo-cover siya sa pila ka oras straight nga imong gibutang (4, 8, 12, 24). Kolor sa table: <b>abohon</b> ang Night Shift, <b>puti</b> ang Day Shift.
+      Kung mo-aprub ka ug ilis o OT, <b>automatic</b> nga naay comment (pula nga marka sa kanto) kinsay ni-puli.
+      Ang website mo-recommend lang. Ikaw ang mo-verify ug mo-aprub.
+    </p>
+  </div>
+
+  <div class="panel">
+    <h2>Dugang ug bag-ong guard</h2>
+    <input id="ngPost" list="ngPosts" placeholder="Post (eg. ROVING)" style="padding:6px 10px;font-size:14px;margin:0 6px 6px 0">
+    <datalist id="ngPosts"></datalist>
+    <input id="ngName" placeholder="Ngalan (eg. DELA CRUZ, JUAN)" style="padding:6px 10px;font-size:14px;margin:0 6px 6px 0;width:230px">
+    <select id="ngShift"><option>Day Shift</option><option>Night Shift</option></select>
+    <button class="ok" id="ngAdd">Idugang</button>
+    <div id="ngMsg"></div>
+    <div id="ngList"></div>
+    <p class="small">Mo-gawas siya sa pinaka-ubos sa table. Wala siyay fix nga duty; mahimo siyang pilian nga ilis kung naay absent.</p>
+  </div>
+
+  <div id="ctx">
+    <div data-a="cmt">💬 Insert comment / pulihan</div>
+    <div data-a="rmcmt">❌ Tanggala ang manual comment</div>
+    <div data-a="edit">✏️ Usba ang text</div>
+    <hr>
+    <div data-a="add">+ Add Guard</div>
+    <div data-a="editg">✏️ Usba ang guard (post / shift)</div>
+    <div data-a="up">⬆ Row pataas</div>
+    <div data-a="down">⬇ Row paubos</div>
+    <div data-a="del">✖ Tagoa ang row</div>
+    <hr>
+    <div data-a="clr">Clear format</div>
+  </div>
+
+  <script>
+    // Direct URL target sa Flask server (Telegram)
+    var SERVER_URL = "http://127.0.0.1:8000";
+
+    // Ang petsa diin Day 1 sa 15-day nga pattern (Oct 1, 2026)
+    var ANCHOR = Date.UTC(2026, 9, 1);
+
+    // ctr, post, name, shift, 15-day nga pattern
+    var GUARDS = [
+      ["", "FRONT DESK", "SEpada, Elizabeth", "Night Shift", ["SIC","SIC","SIC","SIC","SIC","SIC","SIC","SIC","SIC","SIC","DO","SIC","SIC","SIC","SIC"]],
+      ["", "FRONT DESK", "SIABO, RENE", "Day Shift", ["SIC","SIC","SIC","SIC","SIC","SIC","SIC","SIC","SIC","DO","SIC","SIC","SIC","SIC","SIC"]],
+      [3, "FRONT DESK", "VACALARES, JENNY", "Day Shift", ["L1","L1","L1","DO","L1","L1","L1","L1","A/SIC","A/SIC","L1","L1","L1","L1","L1"]],
+      [4, "FRONT DESK", "BANSAG, LANIE R.", "Night Shift", ["L1","L1","L1","L1","L1","L1","L1","L1","L1","DO","L1","L1","L1","L1","L1"]],
+      [5, "ROVING", "ANDRE, RESIE", "Night Shift", ["R1","R1","R1","R1","R1","R1","R1","R1","DO","R1","R1","R1","R1","R1","RD"]],
+      [6, "ROVING", "TEPOSO, RENE", "Day Shift", ["R1","R1","R1","R1","R1","R1","R1","R1","R1","R1","R1","DO","R1","R1","R1"]],
+      [8, "E1/L2/L3", "ARENDAYING, RANDY E.", "Night Shift", ["E1","E1","DO","L2","UGF","UGF","UGF","UGF","UGF","L3","E1","UGF","UGF","UGF","UGF"]],
+      ["", "E1/L2/L3", "Wilfredo Francisco Jr.", "", ["E1","E1","E1","E1","E1","E1","E1","DO","E1","E1","E1","E1","E1","E1","E1"]],
+      [9, "E1/L2/L3", "CANOY, MARICRIS", "Day Shift", ["L2","RD","L2","L2","L2","DO","L2","L2","L2","L2","L2","L2","L2","L2","L2"]],
+      [10, "E1/L2/L3", "BEUGAN, MERKY ANN I.", "Night Shift", ["L1","L2","L1","L1","L2","L2","DO","L2","L2","L2","L2","L2","L2","L1","L2"]],
+      [11, "E1/L2/L3", "SUPREMO, JAY-ANN", "Day Shift", ["L3","L3","L3","L3","RD","E1","L1","L1","L1","L1","L1","L1","L1","L1","L1"]],
+      [12, "E1/L2/L3", "SENTE, ARNOLD", "Night Shift", ["UGF","UGF","E1","RD","L3","L3","L3","L3","L3","L3","L3","L3","L3","L3","L3"]],
+      [13, "E1/L2/L3", "ESTOYA, RICHELYN", "Day Shift", ["L3","L3","L3","L3","L3","L3","L3","L3","L3","L3","L3","L3","L3","DO","L3"]],
+      [14, "IT Park", "AJET, IAN MARK", "Night Shift", ["IT","IT","IT","IT","IT","IT","IT","IT","IT","DO","IT","IT","IT","IT","IT"]],
+      [15, "IT Park", "SINELONG, EMIEL", "Day Shift", ["IT","IT","DO","IT","IT","IT","IT","IT","IT","IT","IT","IT","IT","IT","IT"]],
+      [16, "E1/L2/L3 Reliever", "BARANGAN, EMELITO", "Day Shift", ["RD","L2","IT","E1","E1","L2","L2","L2","R1","IT","E1","R1","R1","DO","L3"]]
+    ];
+    var BASE_GUARDS = GUARDS.slice();   // ang orihinal nga lista (dili mausab)
+    var BASE_COUNT = BASE_GUARDS.length;
+
+    var MONTHS = ["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"];
+    var DAYS = ["SUN","MON","TUE","WED","THU","FRI","SAT"];
+
+    // Pila ka oras ang usa ka duty (Day o Night shift). Usba kung lahi ang inyo.
+    var SHIFT_HOURS = 12;
+
+    // ---------- Mga override (absent / ilis) ----------
+    var overrides = {};
+    try { overrides = JSON.parse(localStorage.getItem("dutyOverrides") || "{}"); } catch (e) { overrides = {}; }
+    function saveOverrides() {
+      try { localStorage.setItem("dutyOverrides", JSON.stringify(overrides)); } catch (e) {}
+    }
+    function monthKey(year, m0) { return year + "-" + m0; }
+
+    // ---------- Dugang nga datos: format, text, comments, bag-ong guard, order ----------
+    var X = { formats: {}, texts: {}, comments: {}, custom: [], order: [], removed: [], colw: {}, rowh: {}, edits: {} };
+    try {
+      var sx = JSON.parse(localStorage.getItem("dutyExtras") || "null");
+      if (sx) { for (var kx in X) { if (sx[kx] !== undefined) X[kx] = sx[kx]; } }
+    } catch (e) {}
+    function saveX() { try { localStorage.setItem("dutyExtras", JSON.stringify(X)); } catch (e) {} }
+    function saveAll() { saveOverrides(); saveX(); }
+
+    // I-build balik ang GUARDS (orihinal + custom) ug i-ayo ang order
+    function buildGuards() {
+      GUARDS.length = 0;
+      BASE_GUARDS.forEach(function (g) { GUARDS.push(g.slice()); });
+      X.custom.forEach(function (c) { GUARDS.push([c.ctr, c.post, c.name, c.shift, c.pattern, c.hours]); });
+      Object.keys(X.edits || {}).forEach(function (k) {
+        var g = GUARDS[parseInt(k, 10)], e = X.edits[k];
+        if (!g) return;
+        if (e.post !== undefined) g[1] = e.post;
+        if (e.name !== undefined) g[2] = e.name;
+        if (e.shift !== undefined) g[3] = e.shift;
+        if (e.hours !== undefined && isStandby(g)) g[5] = e.hours;
+      });
+      var n = GUARDS.length, seen = {}, ord = [];
+      (X.order || []).forEach(function (i) { if (i >= 0 && i < n && !seen[i]) { seen[i] = 1; ord.push(i); } });
+      for (var i = 0; i < n; i++) if (!seen[i]) ord.push(i);
+      X.order = ord;
+      X.removed = (X.removed || []).filter(function (i) { return i < n; });
+    }
+
+    buildGuards();
+    function isRemoved(i) { return X.removed.indexOf(i) >= 0; }
+
+    // Undo
+    var undoStack = [];
+    function snap() { undoStack.push(JSON.stringify({ ov: overrides, X: X })); if (undoStack.length > 40) undoStack.shift(); }
+    function undo() {
+      if (!undoStack.length) return;
+      var s = JSON.parse(undoStack.pop());
+      overrides = s.ov; X = s.X; buildGuards(); saveAll(); render();
+      document.getElementById("result").innerHTML = "";
+    }
+
+    function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
+    function clean(s) { return String(s).replace(/[<>&"]/g, "").trim(); }
+    function curYear() { return parseInt(document.getElementById("year").value, 10); }
+    function curM0() { return parseInt(document.getElementById("month").value, 10); }
+    function curKey() { return monthKey(curYear(), curM0()); }
+
+    function codeFor(guard, year, month0, day) {
+      var t = Date.UTC(year, month0, day);
+      var diff = Math.round((t - ANCHOR) / 86400000);
+      var idx = ((diff % 15) + 15) % 15;
+      return guard[4][idx];
+    }
+
+    function getOverride(gi, year, m0, d) {
+      var o = overrides[monthKey(year, m0)];
+      return o ? o[gi + "-" + d] : undefined;
+    }
+
+    function effectiveCode(gi, year, m0, d) {
+      var ov = getOverride(gi, year, m0, d);
+      if (ov && ov.type === "ABS") return "ABS";
+      if (ov && ov.type === "COVER") return ov.code;
+      if (ov && ov.type === "OT" && isStandby(GUARDS[gi])) return ov.code;
+      return codeFor(GUARDS[gi], year, m0, d);
+    }
+
+    function isOff(c) { return c === "DO" || c === "RD" || c === ""; }
+
+    function streakBefore(gi, year, m0, d) {
+      var n = 0;
+      for (var k = d - 1; k >= 1 && n < 30; k--) {
+        if (isOff(effectiveCode(gi, year, m0, k))) break;
+        n++;
+      }
+      return n;
+    }
+
+    function isStandby(g) { return g[5] !== undefined && g[5] !== null; }
+
+    function recommend(absIdx, year, m0, d) {
+      var absent = GUARDS[absIdx];
+      var duty = codeFor(absent, year, m0, d);
+      if (isOff(duty)) {
+        return { duty: duty, none: (duty === ""
+          ? "Walay duty ang guard nga kini niadtong adlawa (standby), mao nga wala'y kinahanglan nga ilis."
+          : "Naa na siya sa " + duty + " niadtong adlawa, mao nga wala'y kinahanglan nga ilis.") };
+      }
+      var list = [], partial = [];
+      for (var j = 0; j < GUARDS.length; j++) {
+        if (j === absIdx || isRemoved(j)) continue;
+        var g = GUARDS[j];
+        var c = effectiveCode(j, year, m0, d);
+        if (!isOff(c)) continue;
+        var sb = isStandby(g);
+        if (sb && getOverride(j, year, m0, d)) continue;
+        var score = 10, why = [sb ? "Standby guard (" + g[5] + " ka oras straight)" : "Naa sa " + c + " niadtong adlawa"];
+        if (g[3] && absent[3] && g[3] === absent[3]) { score += 4; why.push("Pareho nga shift (" + g[3] + ")"); }
+        else if (g[3] && absent[3]) { why.push("Lahi nga shift (" + g[3] + ")"); }
+        if (g[1] === absent[1]) { score += 3; why.push("Pareho nga post (" + g[1] + ")"); }
+        if (!sb) {
+          if (g[4].indexOf(duty) >= 0) { score += 2; why.push("Nag-duty na sa " + duty); }
+          else { why.push("Wala pa siya makaduty sa " + duty); }
+        }
+        if (g[1].indexOf("Reliever") >= 0) { score += 1; why.push("Reliever siya"); }
+        var streak = streakBefore(j, year, m0, d);
+        why.push("Nag-duty sunod-sunod: " + streak + " ka adlaw sa wala pa kini");
+        score -= streak * 0.01;
+        var item = { idx: j, name: g[2], score: score, why: why, hours: g[5] };
+        if (sb && g[5] < SHIFT_HOURS) partial.push(item); else list.push(item);
+      }
+      list.sort(function (a, b) { return b.score - a.score; });
+      partial.sort(function (a, b) { return b.score - a.score; });
+
+      var ot = [];
+      if (list.length < 3) {
+        for (var k = 0; k < GUARDS.length; k++) {
+          if (k === absIdx || isRemoved(k)) continue;
+          var gk = GUARDS[k];
+          var ck = effectiveCode(k, year, m0, d);
+          if (isOff(ck) || ck === "ABS") continue;
+          if (getOverride(k, year, m0, d)) continue;
+          if (gk[3] && absent[3] && gk[3] === absent[3]) continue;
+          var sc = 5, wy = ["Naa sa duty (" + ck + ") sa lahi nga shift, mahimo nga OT/extension"];
+          if (gk[1] === absent[1]) { sc += 3; wy.push("Pareho nga post (" + gk[1] + ")"); }
+          if (gk[4].indexOf(duty) >= 0) { sc += 2; wy.push("Nag-duty na sa " + duty); }
+          var stk = streakBefore(k, year, m0, d);
+          wy.push("Nag-duty sunod-sunod: " + stk + " ka adlaw sa wala pa kini");
+          sc -= stk * 0.1;
+          ot.push({ idx: k, name: gk[2], score: sc, why: wy, tired: stk >= 7 });
+        }
+        ot.sort(function (a, b) { return b.score - a.score; });
+      }
+      return { duty: duty, list: list, otList: ot, partial: partial };
+    }
+
+    var lastAbs = -1, lastDay = 0;
+
+    function approvedOT(absIdx, year, m0, d) {
+      var res = [], o = overrides[monthKey(year, m0)] || {};
+      for (var key in o) {
+        var v = o[key];
+        var parts = key.split("-");
+        if (v.type === "OT" && v.forIdx === absIdx && parts[1] === String(d)) {
+          res.push({ idx: parseInt(parts[0], 10), hours: v.hours });
+        }
+      }
+      return res;
+    }
+
+    function showResult() {
+      lastAbs = parseInt(document.getElementById("absGuard").value, 10);
+      lastDay = parseInt(document.getElementById("absDay").value, 10);
+      renderResult();
+    }
+
+    function renderResult() {
+      var year = curYear();
+      var m0 = curM0();
+      var gi = lastAbs, d = lastDay;
+      var r = recommend(gi, year, m0, d);
+      var res = document.getElementById("result");
+      var head = "<p><b>" + esc(GUARDS[gi][2]) + "</b> (" + (GUARDS[gi][3] || "walay shift") + ") absent sa " +
+                 MONTHS[m0] + " " + d + ". Duty nga kinahanglan ilisan: <b>" + r.duty + "</b></p>";
+      if (r.none) { res.innerHTML = head + "<div class='msg'>" + r.none + "</div>"; return; }
+      var o = head;
+
+      var done = approvedOT(gi, year, m0, d);
+      var covered = 0;
+      if (done.length > 0) {
+        o += "<p><b>Na-aprubahan na:</b></p>";
+        done.forEach(function (x) {
+          covered += x.hours;
+          o += "<div class='rec top'><b>" + esc(GUARDS[x.idx][2]) + "</b> - " + x.hours + " ka oras " +
+               (isStandby(GUARDS[x.idx]) ? "(standby)" : "OT") + " " +
+               "<button class='warn' onclick='removeOT(" + x.idx + ")'>Kuhaa</button></div>";
+        });
+      }
+      var left = SHIFT_HOURS - covered;
+      if (done.length > 0 && left <= 0) {
+        res.innerHTML = o + "<div class='msg'>Kompleto na ang " + SHIFT_HOURS + " ka oras. Wala nay kinahanglan nga dugang.</div>";
+        return;
+      }
+
+      var need = Math.max(0, 3 - r.list.length - r.partial.length);
+
+      if (r.list.length > 0) {
+        o += "<p class='small'>Ang unang pilian mao ang pinakamaayo nga recommend. Ikaw ang mo-verify.</p>";
+        r.list.slice(0, 3).forEach(function (x, n) {
+          o += "<div class='rec" + (n === 0 ? " top" : "") + "'><b>" + (n + 1) + ". " + esc(x.name) + "</b> (puntos: " + x.score.toFixed(2) + ")<br>" +
+               "<span class='small'>" + x.why.join(" | ") + "</span><br>" +
+               "<button class='ok' onclick='applyCover(" + x.idx + ")'>Aprubahan ang ilis</button></div>";
+        });
+        if (r.list.length < 3 && r.otList.length > 0) {
+          o += "<div class='msg'>" + r.list.length + " ra ang naa sa DO o RD, busa naay dugang nga pilian (OT) aron mahimong hangtod 3 ka option.</div>";
+        }
+      } else {
+        o += "<div class='msg'>Walay guard nga naa sa DO o RD niadtong adlawa.</div>";
+      }
+
+      if (r.partial.length > 0) {
+        o += "<p class='small'><b>Standby nga guard (partial nga oras).</b> Nahabilin: <b>" + left + " ka oras</b>.</p>";
+        r.partial.forEach(function (x) {
+          var hrs = Math.min(x.hours, left);
+          o += "<div class='rec'><b>" + esc(x.name) + "</b> (puntos: " + x.score.toFixed(2) + ")<br>" +
+               "<span class='small'>" + x.why.join(" | ") + "</span><br>" +
+               "<select id='h" + x.idx + "'><option value='" + hrs + "'>" + hrs + " ka oras</option></select> " +
+               "<button class='ok' onclick='approveOT(" + x.idx + ")'>Aprubahan si " + esc(x.name) + "</button></div>";
+        });
+      }
+
+      if (r.list.length === 0 && r.otList.length === 0 && r.partial.length === 0) {
+        res.innerHTML = o + "<div class='msg'>Kulang pa og <b>" + left + " ka oras</b>, ug wala nay mahimong OT nga guard (pareho ang shift sa tanan o naa na silay usab). Kontaka ang supervisor o agency para sa dugang nga tawo.</div>";
+        return;
+      }
+      if (need > 0 && r.otList.length > 0) {
+        o += "<p class='small'>Nahabilin: <b>" + left + " ka oras</b>. Pilia kung kinsa ang gusto nimo i-extend ug pilia ang oras (4 o 8). " +
+             "Ang usa ka guard dili molapas og 20 ka oras sa usa ka adlaw. Kinahanglan i-verify nimo ang oras, bayad, ug pahulay.</p>";
+        r.otList.slice(0, need).forEach(function (x, n) {
+          var opts = "<option value='4'>4 ka oras</option>";
+          if (left >= 8) opts += "<option value='8'>8 ka oras</option>";
+          o += "<div class='rec" + (n === 0 && r.list.length === 0 ? " top" : "") + "'><b>" + (r.list.length + r.partial.length + n + 1) + ". " + esc(x.name) + "</b> (puntos: " + x.score.toFixed(2) + ")<br>" +
+               "<span class='small'>" + x.why.join(" | ") + "</span><br>" +
+               (x.tired ? "<span class='small' style='color:#b71c1c'><b>Pag-amping:</b> taas na ang iyang sunod-sunod nga adlaw. Delikado ang dugang nga OT.</span><br>" : "") +
+               "<select id='h" + x.idx + "'>" + opts + "</select> " +
+               "<button class='ok' onclick='approveOT(" + x.idx + ")'>Aprubahan si " + esc(x.name) + "</button></div>";
+        });
+      }
+      res.innerHTML = o;
+    }
+
+    function setCover(absIdx, j, d, type, hours) {
+      var year = curYear(), m0 = curM0();
+      var duty = codeFor(GUARDS[absIdx], year, m0, d);
+      var key = monthKey(year, m0);
+      if (!overrides[key]) overrides[key] = {};
+      overrides[key][absIdx + "-" + d] = { type: "ABS" };
+      if (type === "OT") overrides[key][j + "-" + d] = { type: "OT", code: duty, hours: hours, forIdx: absIdx };
+      else overrides[key][j + "-" + d] = { type: "COVER", code: duty, forIdx: absIdx };
+      return duty;
+    }
+
+    // ---------- Telegram ----------
+    function sendTelegram(type, name) {
+      return fetch(SERVER_URL + "/trigger-alert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ alert_type: type, guard_name: name })
+      })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { return (d && d.success) ? "ok" : "fail"; })
+      .catch(function () { return "error"; });
+    }
+    
+    function sendQuickAlert(type) {
+      sendTelegram(type, "Manual Dashboard Trigger").then(function (s) {
+        if (s === "ok") alert("Naabot na ang alerto sa Telegram!");
+        else if (s === "fail") alert("Wala napadala.");
+        else alert("Error: Siguraduha nga nag-run ang 'python scheduler.py' sa VS Code terminal!");
+      });
+    }
+
+    // --- NEW: Polling function to receive incoming messages from Telegram ---
+    function pollTelegramMessages() {
+      fetch(SERVER_URL + "/get-messages")
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data && data.messages && data.messages.length > 0) {
+            data.messages.forEach(function(msg) {
+              handleIncomingTelegramMessage(msg);
+            });
+          }
+          document.getElementById("tgStatus").innerText = "● Nakapaminaw sa Telegram (Aktibo)";
+        })
+        .catch(function() {
+          document.getElementById("tgStatus").innerText = "● Offline ang Telegram Server";
+        });
+    }
+
+    // --- NEW: Automatically handle guard confirmation response received via Telegram ---
+    function handleIncomingTelegramMessage(msg) {
+      // Expected message format from Telegram bot handler: { guard_name: "...", absent_name: "...", date: "YYYY-MM-DD" }
+      if (!msg.guard_name || !msg.absent_name) return;
+
+      var year = curYear(), m0 = curM0();
+      
+      // Find the replacing guard index
+      var replIdx = -1;
+      var absIdx = -1;
+      
+      for (var i = 0; i < GUARDS.length; i++) {
+        if (GUARDS[i][2].toLowerCase().includes(msg.guard_name.toLowerCase())) {
+          replIdx = i;
+        }
+        if (GUARDS[i][2].toLowerCase().includes(msg.absent_name.toLowerCase())) {
+          absIdx = i;
+        }
+      }
+
+      if (replIdx !== -1 && absIdx !== -1) {
+        // Parse date or default to current selected day
+        var targetDay = msg.day ? parseInt(msg.day, 10) : lastDay;
+        if (!targetDay || isNaN(targetDay)) targetDay = 1;
+
+        snap();
+        var duty = setCover(absIdx, replIdx, targetDay, "COVER", 0);
+        
+        // Add automatic comment
+        var key = monthKey(year, m0);
+        if (!X.comments[key]) X.comments[key] = {};
+        X.comments[key][replIdx + "-" + targetDay] = "Telegram: Ni-duty isip ilis kang " + GUARDS[absIdx][2];
+
+        saveAll();
+        render();
+        
+        console.log("Auto-assigned via Telegram message:", msg.guard_name, "covering", msg.absent_name);
+      }
+    }
+
+    // Start polling Telegram backend every 5 seconds
+    setInterval(pollTelegramMessages, 5000);
+
+    function applyCover(j, type) {
+      snap();
+      var year = curYear(), m0 = curM0();
+      var duty = setCover(lastAbs, j, lastDay, "COVER", 0);
+      saveOverrides();
+      render();
+      var covName = GUARDS[j][2], absName = GUARDS[lastAbs][2], dd = lastDay;
+      document.getElementById("result").innerHTML =
+        "<div class='msg'>Na-aprubahan: <b>" + esc(covName) + "</b> ang mo-ilis kay <b>" + esc(absName) +
+        "</b> sa " + MONTHS[m0] + " " + dd + " (" + duty + "). Makita sa table: ang ABS (pula) ug ang ilis (naay kahon), ug naay <b>comment</b> (pula nga marka sa kanto).</div>";
+    }
+
+    function approveOT(j) {
+      snap();
+      var sel = document.getElementById("h" + j);
+      var hours = sel ? parseInt(sel.value, 10) : 4;
+      var year = curYear(), m0 = curM0();
+      var duty = setCover(lastAbs, j, lastDay, "OT", hours);
+      saveOverrides();
+      render();
+      renderResult();
+      var covName = GUARDS[j][2], absName = GUARDS[lastAbs][2], dd = lastDay;
+      var key = monthKey(year, m0);
+      if (!X.comments[key]) X.comments[key] = {};
+      X.comments[key][j + "-" + dd] = "OT " + hours + "hrs para kay " + absName;
+      saveX();
+      render();
+    }
+
+    function removeOT(j) {
+      snap();
+      var year = curYear(), m0 = curM0();
+      var key = monthKey(year, m0);
+      var o = overrides[key];
+      if (o) {
+        delete o[j + "-" + lastDay];
+        delete o[lastAbs + "-" + lastDay];
+        saveOverrides();
+      }
+      if (X.comments[key]) {
+        delete X.comments[key][j + "-" + lastDay];
+        saveX();
+      }
+      render();
+      renderResult();
+    }
+
+    // Initial render setup for Month/Year selectors and table structure
+    function initSelectors() {
+      var mSel = document.getElementById("month");
+      MONTHS.forEach(function (m, idx) {
+        var opt = document.createElement("option");
+        opt.value = idx;
+        opt.textContent = m;
+        mSel.appendChild(opt);
+      });
+      mSel.value = 9; // October
+    }
+
+    function render() {
+      var year = curYear();
+      var m0 = curM0();
+      document.getElementById("title").innerText = MONTHS[m0] + " " + year + " DUTY SCHEDULE & TELEGRAM DASHBOARD";
+      
+      var table = document.getElementById("sched");
+      table.innerHTML = "";
+      
+      // Build table header
+      var headerRow = document.createElement("tr");
+      headerRow.innerHTML = "<th>Post</th><th>Name</th><th>Shift</th>";
+      var daysInMonth = new Date(year, m0 + 1, 0).getDate();
+      
+      for (var d = 1; d <= daysInMonth; d++) {
+        var dayOfWeek = new Date(year, m0, d).getDay();
+        var thClass = (dayOfWeek === 0 || dayOfWeek === 6) ? "wknd" : "";
+        headerRow.innerHTML += "<th class='" + thClass + "'>" + DAYS[dayOfWeek] + "<br>" + d + "</th>";
+      }
+      table.appendChild(headerRow);
+
+      // Populate rows for guards
+      GUARDS.forEach(function (g, idx) {
+        if (isRemoved(idx)) return;
+        var tr = document.createElement("tr");
+        tr.innerHTML = "<td class='left'>" + esc(g[1]) + "</td><td class='left name'>" + esc(g[2]) + "</td><td>" + esc(g[3]) + "</td>";
+        
+        for (var d = 1; d <= daysInMonth; d++) {
+          var code = effectiveCode(idx, year, m0, d);
+          var tdClass = "";
+          if (code === "ABS") tdClass = "ABS";
+          else if (g[3] === "Night Shift") tdClass = "night";
+          else tdClass = "day";
+          
+          tr.innerHTML += "<td class='" + tdClass + "'>" + esc(code) + "</td>";
+        }
+        table.appendChild(tr);
+      });
+
+      // Populate absent select options
+      var absGuardSel = document.getElementById("absGuard");
+      absGuardSel.innerHTML = "";
+      GUARDS.forEach(function(g, idx) {
+        if (!isRemoved(idx)) {
+          var opt = document.createElement("option");
+          opt.value = idx;
+          opt.textContent = g[2] + " (" + g[1] + ")";
+          absGuardSel.appendChild(opt);
+        }
+      });
+
+      var absDaySel = document.getElementById("absDay");
+      absDaySel.innerHTML = "";
+      for (var d = 1; d <= daysInMonth; d++) {
+        var opt = document.createElement("option");
+        opt.value = d;
+        opt.textContent = MONTHS[m0] + " " + d;
+        absDaySel.appendChild(opt);
+      }
+    }
+
+    document.getElementById("month").addEventListener("change", render);
+    document.getElementById("year").addEventListener("input", render);
+    document.getElementById("findBtn").addEventListener("click", showResult);
+    document.getElementById("clearBtn").addEventListener("click", function() {
+      snap();
+      overrides = {};
+      saveOverrides();
+      render();
+      document.getElementById("result").innerHTML = "";
+    });
+
+    initSelectors();
+    render();
+  </script>
+</body>
+</html>
