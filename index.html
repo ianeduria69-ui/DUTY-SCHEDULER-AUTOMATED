@@ -1,4 +1,4 @@
-s<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ceb">
 <head>
   <meta charset="UTF-8">
@@ -1011,6 +1011,162 @@ s<!DOCTYPE html>
     // I-render balik aron mo-gamit na ang bag-ong effectiveCode, dayon i-enhance
     render();
     enhance();
+  })();
+  </script>
+  <!-- ================================================================== -->
+  <!-- DUGANG #2 (wala nag-usab sa taas nga code):                         -->
+  <!--  1) Add Guard (b-add + Idugang)   2) Lock sa schedule   3) I-print  -->
+  <!-- ================================================================== -->
+  <script>
+  (function () {
+    function $(id) { return document.getElementById(id); }
+
+    // ================= (2) LOCK sa schedule =================
+    var LOCK_KEY = "dutyLock";
+    var pwHash = null;
+    try { var sl = JSON.parse(localStorage.getItem(LOCK_KEY) || "null"); if (sl && sl.h) pwHash = sl.h; } catch (e) {}
+    var locked = !!pwHash;   // kung naay password, naka-lock dayon pag-abli sa page
+
+    function hashPw(s) {
+      var txt = "duty-sched::" + s;
+      if (window.crypto && window.crypto.subtle && window.TextEncoder) {
+        return window.crypto.subtle.digest("SHA-256", new TextEncoder().encode(txt)).then(function (buf) {
+          return Array.prototype.map.call(new Uint8Array(buf), function (b) { return ("0" + b.toString(16)).slice(-2); }).join("");
+        });
+      }
+      var h = 5381;
+      for (var i = 0; i < txt.length; i++) h = ((h << 5) + h + txt.charCodeAt(i)) | 0;
+      return Promise.resolve("x" + h);
+    }
+
+    function denied() {
+      if (!locked) return false;
+      alert("Naka-lock ang schedule. I-click ang lock button sa taas ug butang ang password para ma-unlock.");
+      return true;
+    }
+
+    var lockBtn = document.createElement("button");
+    lockBtn.id = "lockBtn";
+    lockBtn.className = "main";
+    document.querySelector(".controls").appendChild(lockBtn);
+    function refreshLock() {
+      lockBtn.textContent = !pwHash ? "🔓 Butangi ug lock" : (locked ? "🔒 Naka-lock (i-unlock)" : "🔓 I-lock na");
+      lockBtn.style.background = locked ? "#b71c1c" : "#2e7d32";
+    }
+    lockBtn.addEventListener("click", function () {
+      if (!pwHash) {
+        var p1 = prompt("Butang ug password para i-lock ang schedule:");
+        if (!p1) return;
+        var p2 = prompt("I-type balik ang password:");
+        if (p1 !== p2) { alert("Dili parehas ang password. Sulayi balik."); return; }
+        hashPw(p1).then(function (h) {
+          pwHash = h;
+          try { localStorage.setItem(LOCK_KEY, JSON.stringify({ h: h })); } catch (e) {}
+          locked = true; refreshLock();
+        });
+      } else if (locked) {
+        var p = prompt("Password para i-unlock:");
+        if (p === null) return;
+        hashPw(p).then(function (h) {
+          if (h === pwHash) { locked = false; refreshLock(); }
+          else alert("Sayop ang password.");
+        });
+      } else {
+        locked = true; refreshLock();
+      }
+    });
+
+    // Kung naka-lock: dili mo-gana ang pag-edit, comment, undo, reset, add guard ug ilis
+    var table = $("sched");
+    document.addEventListener("dblclick", function (e) {
+      if (locked && e.target.closest && e.target.closest("#sched")) { e.stopImmediatePropagation(); e.preventDefault(); denied(); }
+    }, true);
+    document.addEventListener("contextmenu", function (e) {
+      if (locked && e.target.closest && e.target.closest("#sched")) { e.stopImmediatePropagation(); e.preventDefault(); denied(); }
+    }, true);
+    document.addEventListener("keydown", function (e) {
+      if (!locked || (e.key !== "F2" && e.key !== "Enter")) return;
+      var tag = (e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || tag === "button") return;
+      if (table.querySelector("td.selc")) { e.stopImmediatePropagation(); e.preventDefault(); }
+    }, true);
+    document.addEventListener("click", function (e) {
+      if (!locked || !e.target.closest) return;
+      if (e.target.closest("#b-cmt,#b-cmts,#b-undo,#clearBtn,#b-add,#ngAdd")) {
+        e.stopImmediatePropagation(); e.preventDefault(); denied();
+      }
+    }, true);
+
+    // Ang mga butones sa "Aprubahan / Kuhaa" naka-lock pud
+    var _apply = applyCover;
+    applyCover = function () { if (denied()) return; return _apply.apply(this, arguments); };
+    var _ot = approveOT;
+    approveOT = function () { if (denied()) return; return _ot.apply(this, arguments); };
+    var _rm = removeOT;
+    removeOT = function () { if (denied()) return; return _rm.apply(this, arguments); };
+
+    // ================= (3) I-print =================
+    $("print").addEventListener("click", function () { window.print(); });
+
+    // ================= (1) Add Guard =================
+    // Ang standby guard kinahanglan og oras (4, 8, 12, 24), mao nga gidugang ang pilian
+    var hrs = document.createElement("select");
+    hrs.id = "ngHours";
+    [4, 8, 12, 24].forEach(function (h) {
+      var o = document.createElement("option");
+      o.value = h; o.textContent = h + " ka oras";
+      if (h === 12) o.selected = true;
+      hrs.appendChild(o);
+    });
+    $("ngAdd").parentNode.insertBefore(hrs, $("ngAdd"));
+
+    function fillPosts() {
+      var seen = {}, dl = $("ngPosts");
+      dl.innerHTML = "";
+      GUARDS.forEach(function (g, i) {
+        if (isRemoved(i) || !g[1] || seen[g[1]]) return;
+        seen[g[1]] = 1;
+        var o = document.createElement("option");
+        o.value = g[1];
+        dl.appendChild(o);
+      });
+    }
+
+    function msg(t) { $("ngMsg").innerHTML = "<div class='msg'>" + t + "</div>"; }
+
+    function addGuard() {
+      if (denied()) return;
+      var post = clean($("ngPost").value);
+      var name = clean($("ngName").value);
+      var shift = $("ngShift").value;
+      var hours = parseInt($("ngHours").value, 10);
+      if (!post || !name) { msg("Kinahanglan i-type ang <b>Post</b> ug ang <b>Ngalan</b>."); return; }
+      for (var i = 0; i < GUARDS.length; i++) {
+        if (!isRemoved(i) && GUARDS[i][2].toLowerCase() === name.toLowerCase()) {
+          msg("Naa na ang guard nga <b>" + esc(name) + "</b> sa lista."); return;
+        }
+      }
+      snap();
+      var pattern = [];
+      for (var k = 0; k < 15; k++) pattern.push("");   // walay fix nga duty (standby)
+      X.custom.push({ ctr: "", post: post, name: name, shift: shift, pattern: pattern, hours: hours });
+      buildGuards();
+      saveX();
+      render();
+      fillPosts();
+      $("ngPost").value = ""; $("ngName").value = "";
+      msg("Nadugang si <b>" + esc(name) + "</b> (" + esc(post) + ", " + esc(shift) + ", standby " + hours + " ka oras). Naa siya sa pinaka-ubos sa table.");
+    }
+
+    $("ngAdd").addEventListener("click", addGuard);
+    $("b-add").addEventListener("click", function () {
+      var p = document.querySelector("#ngName").closest(".panel");
+      if (p && p.scrollIntoView) p.scrollIntoView({ behavior: "smooth", block: "center" });
+      $("ngPost").focus();
+    });
+
+    fillPosts();
+    refreshLock();
   })();
   </script>
 </body>
