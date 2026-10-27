@@ -682,5 +682,336 @@
     initSelectors();
     render();
   </script>
+
+  <!-- ================================================================== -->
+  <!-- DUGANG NGA SCRIPT (wala nag-usab sa taas nga code)                  -->
+  <!--  1) Editable ang sulod sa cell (double-click / F2 / Enter)          -->
+  <!--  2) Auto-ilis: mausab ang schedule sa mo-puli, ug naay auto comment -->
+  <!--  3) Editable na ang comment (modal: usba / tanggala / listahan)     -->
+  <!-- ================================================================== -->
+  <style>
+    td[contenteditable="true"] { background: #fffde7 !important; color: #000 !important; outline: 2px solid #f59e0b; outline-offset: -2px; text-align: center; }
+    td small { font-size: 10px; font-weight: normal; }
+    .cmtitem { border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px; margin: 8px 0; font-size: 13px; }
+    .cmtitem button { margin-top: 6px; padding: 4px 10px; border: 1px solid #94a3b8; background: #fff; border-radius: 4px; cursor: pointer; }
+  </style>
+  <script>
+  (function () {
+    function $(id) { return document.getElementById(id); }
+    var table = $("sched");
+    var selId = null;
+    var editing = false;
+
+    // ---------- (1) Text edit: i-override ang effectiveCode ----------
+    var origEff = effectiveCode;
+    effectiveCode = function (gi, y, m0, d) {
+      var t = X.texts && X.texts[monthKey(y, m0)];
+      var v = t && t[gi + "-" + d];
+      if (v !== undefined && v !== "") return v;
+      return origEff(gi, y, m0, d);
+    };
+
+    // ---------- (2) Auto-ilis ----------
+    // Kung mo-aprub ka og ilis, tangtangon ang manual text sa duha ka cell
+    // aron makita gyud ang bag-ong schedule (ABS sa absent, duty code sa mo-puli)
+    var origSet = setCover;
+    setCover = function (absIdx, j, d, type, hours) {
+      var key = curKey();
+      if (X.texts && X.texts[key]) {
+        delete X.texts[key][absIdx + "-" + d];
+        delete X.texts[key][j + "-" + d];
+      }
+      return origSet(absIdx, j, d, type, hours);
+    };
+
+    function absentNote(key, a, d, text) {
+      if (!X.comments[key]) X.comments[key] = {};
+      var id = a + "-" + d, cur = X.comments[key][id];
+      if (!cur) X.comments[key][id] = "ABSENT - " + text;
+      else if (cur.indexOf("ABSENT - ") === 0 && cur.indexOf(text) < 0) X.comments[key][id] = cur + "\n" + text;
+    }
+
+    var origApply = applyCover;
+    applyCover = function (j, type) {
+      var a = lastAbs, d = lastDay, key = curKey();
+      var duty = codeFor(GUARDS[a], curYear(), curM0(), d);
+      origApply(j, type);
+      if (!X.comments[key]) X.comments[key] = {};
+      X.comments[key][j + "-" + d] = "Ni-ilis kay " + GUARDS[a][2] + " (" + duty + ")";
+      absentNote(key, a, d, "gi-ilisan ni " + GUARDS[j][2]);
+      saveX();
+      render();
+    };
+
+    var origOT = approveOT;
+    approveOT = function (j) {
+      var s = $("h" + j), h = s ? parseInt(s.value, 10) : 4;
+      var a = lastAbs, d = lastDay, key = curKey();
+      origOT(j);
+      absentNote(key, a, d, "OT " + h + "h ni " + GUARDS[j][2]);
+      saveX();
+      render();
+    };
+
+    var origRemove = removeOT;
+    removeOT = function (j) {
+      var a = lastAbs, d = lastDay, key = curKey();
+      origRemove(j);
+      var c = X.comments[key];
+      if (c && c[a + "-" + d] && c[a + "-" + d].indexOf("ABSENT - ") === 0) {
+        delete c[a + "-" + d];
+        saveX();
+        render();
+      }
+    };
+
+    // ---------- I-enhance ang table human sa matag render ----------
+    function enhance() {
+      var key = curKey(), y = curYear(), m0 = curM0();
+      var vis = [];
+      GUARDS.forEach(function (g, i) { if (!isRemoved(i)) vis.push(i); });
+      var rows = Array.prototype.slice.call(table.rows, 1);
+      rows.forEach(function (tr, ri) {
+        var gi = vis[ri];
+        if (gi === undefined) return;
+        tr.dataset.gi = gi;
+        var cells = tr.cells;
+        if (cells[0]) cells[0].dataset.f = "post";
+        if (cells[1]) cells[1].dataset.f = "name";
+        if (cells[2]) cells[2].dataset.f = "shift";
+        for (var c = 3; c < cells.length; c++) {
+          var td = cells[c];
+          if (td.dataset.enh) continue;
+          td.dataset.enh = "1";
+          var d = c - 2;
+          var id = gi + "-" + d;
+          td.dataset.id = id;
+          var ov = getOverride(gi, y, m0, d);
+          if (ov && (ov.type === "COVER" || (ov.type === "OT" && isStandby(GUARDS[gi])))) {
+            // Ang mo-puli mo-sunod sa shift sa guard nga iyang gi-ilisan
+            var ab = GUARDS[ov.forIdx];
+            td.classList.remove("day", "night");
+            td.classList.add(ab && ab[3] === "Night Shift" ? "night" : "day");
+            td.classList.add("cover");
+          } else if (ov && ov.type === "OT") {
+            td.classList.add("cover");
+            td.innerHTML = esc(td.textContent) + "<br><small>+OT " + ov.hours + "h</small>";
+          }
+          var cm = X.comments[key] && X.comments[key][id];
+          if (cm) { td.classList.add("hasc"); td.title = cm; }
+          if (id === selId) td.classList.add("selc");
+        }
+      });
+    }
+    new MutationObserver(function () { enhance(); }).observe(table, { childList: true });
+
+    // ---------- Pili sa cell ----------
+    function selectCell(td) {
+      var old = table.querySelector("td.selc");
+      if (old) old.classList.remove("selc");
+      selId = td ? td.dataset.id : null;
+      if (td) td.classList.add("selc");
+    }
+    function selectedTd() {
+      return selId ? table.querySelector("td[data-id='" + selId + "']") : null;
+    }
+    table.addEventListener("click", function (e) {
+      var td = e.target.closest ? e.target.closest("td[data-id]") : null;
+      if (td && !editing) selectCell(td);
+    });
+
+    // ---------- (1) Edit sulod sa cell ----------
+    function setEdit(gi, field, val) {
+      if (!X.edits) X.edits = {};
+      if (!X.edits[gi]) X.edits[gi] = {};
+      X.edits[gi][field] = val;
+      buildGuards();
+      saveX();
+    }
+
+    function startEdit(td) {
+      if (editing || !td) return;
+      var tr = td.parentNode;
+      var gi = parseInt(tr.dataset.gi, 10);
+      if (isNaN(gi)) return;
+      var f = td.dataset.f, key = curKey(), y = curYear(), m0 = curM0();
+      var done = false;
+
+      if (f === "shift") {
+        editing = true;
+        var curS = GUARDS[gi][3] || "";
+        var sel = document.createElement("select");
+        ["", "Day Shift", "Night Shift"].forEach(function (v) {
+          var o = document.createElement("option");
+          o.value = v; o.textContent = v || "(walay shift)";
+          if (v === curS) o.selected = true;
+          sel.appendChild(o);
+        });
+        td.innerHTML = "";
+        td.appendChild(sel);
+        sel.focus();
+        var finS = function (save) {
+          if (done) return; done = true; editing = false;
+          if (save && sel.value !== curS) { snap(); setEdit(gi, "shift", sel.value); }
+          render();
+        };
+        sel.addEventListener("change", function () { finS(true); });
+        sel.addEventListener("blur", function () { finS(false); });
+        sel.addEventListener("keydown", function (e) { if (e.key === "Escape") finS(false); });
+        return;
+      }
+
+      var cur, id = td.dataset.id, d = 0;
+      if (f === "post") cur = GUARDS[gi][1];
+      else if (f === "name") cur = GUARDS[gi][2];
+      else if (id) { d = parseInt(id.split("-")[1], 10); cur = effectiveCode(gi, y, m0, d); }
+      else return;
+
+      editing = true;
+      td.textContent = cur;
+      td.contentEditable = "true";
+      td.focus();
+      var r = document.createRange(); r.selectNodeContents(td);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+
+      function fin(save) {
+        if (done) return; done = true; editing = false;
+        td.contentEditable = "false";
+        if (save) {
+          var val = td.textContent.replace(/\s+/g, " ").trim();
+          if (f === "post" || f === "name") {
+            val = clean(val);
+            if (val && val !== cur) { snap(); setEdit(gi, f, val); }
+          } else {
+            val = val.toUpperCase();
+            if (val !== cur) {
+              snap();
+              if (!X.texts[key]) X.texts[key] = {};
+              var base = origEff(gi, y, m0, d);
+              if (val === "" || val === base) delete X.texts[key][id];
+              else X.texts[key][id] = val;
+              saveX();
+            }
+          }
+        }
+        render();
+      }
+      td.addEventListener("blur", function () { fin(true); });
+      td.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") { e.preventDefault(); fin(true); }
+        else if (e.key === "Escape") { e.preventDefault(); fin(false); }
+      });
+    }
+
+    table.addEventListener("dblclick", function (e) {
+      var td = e.target.closest ? e.target.closest("td") : null;
+      if (!td || !(td.dataset.id || td.dataset.f)) return;
+      if (td.dataset.id) selectCell(td);
+      startEdit(td);
+    });
+
+    document.addEventListener("keydown", function (e) {
+      if (editing || document.querySelector(".dsm-bg")) return;
+      var tag = (e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      if (e.key === "F2" || e.key === "Enter") {
+        var td = selectedTd();
+        if (td) { e.preventDefault(); startEdit(td); }
+      }
+    });
+
+    // ---------- (3) Editable nga comment ----------
+    function closeModal(bg) { if (bg && bg.parentNode) bg.parentNode.removeChild(bg); }
+
+    function openComment(id) {
+      if (!id) { alert("Pili una ang cell (i-click) nga butangan ug comment."); return; }
+      var key = curKey(), p = id.split("-"), gi = parseInt(p[0], 10), d = parseInt(p[1], 10);
+      var cur = (X.comments[key] || {})[id] || "";
+      var bg = document.createElement("div");
+      bg.className = "dsm-bg";
+      bg.innerHTML = "<div class='dsm'><h3>Comment: " + esc(GUARDS[gi][2]) + " - " + MONTHS[curM0()] + " " + d + "</h3>" +
+        "<label>Comment (pwede nimo usbon)</label><textarea rows='5'></textarea>" +
+        "<div class='btns'><button class='cdel'>Tanggala</button><button class='cno'>Kansela</button><button class='go cok'>I-save</button></div></div>";
+      document.body.appendChild(bg);
+      var ta = bg.querySelector("textarea");
+      ta.value = cur; ta.focus();
+      bg.querySelector(".cno").onclick = function () { closeModal(bg); };
+      bg.querySelector(".cdel").onclick = function () {
+        if (cur) { snap(); if (X.comments[key]) delete X.comments[key][id]; saveX(); render(); }
+        closeModal(bg);
+      };
+      bg.querySelector(".cok").onclick = function () {
+        var v = ta.value.trim();
+        if (v !== cur) {
+          snap();
+          if (!X.comments[key]) X.comments[key] = {};
+          if (v) X.comments[key][id] = v; else delete X.comments[key][id];
+          saveX(); render();
+        }
+        closeModal(bg);
+      };
+      bg.addEventListener("mousedown", function (e) { if (e.target === bg) closeModal(bg); });
+      ta.addEventListener("keydown", function (e) { if (e.key === "Escape") closeModal(bg); });
+    }
+
+    function listComments() {
+      var key = curKey(), c = X.comments[key] || {};
+      var ids = Object.keys(c).filter(function (k) { return c[k]; }).sort(function (a, b) {
+        var pa = a.split("-"), pb = b.split("-");
+        return (parseInt(pa[1], 10) - parseInt(pb[1], 10)) || (parseInt(pa[0], 10) - parseInt(pb[0], 10));
+      });
+      var bg = document.createElement("div");
+      bg.className = "dsm-bg";
+      var html = "<div class='dsm'><h3>Mga comment sa " + MONTHS[curM0()] + " " + curYear() + "</h3>";
+      if (!ids.length) html += "<p class='small'>Wala pay comment sa bulan nga kini.</p>";
+      ids.forEach(function (id) {
+        var p = id.split("-"), gi = parseInt(p[0], 10);
+        if (!GUARDS[gi]) return;
+        html += "<div class='cmtitem'><b>" + esc(GUARDS[gi][2]) + "</b> - " + MONTHS[curM0()] + " " + p[1] + "<br>" +
+                esc(c[id]).replace(/\n/g, "<br>") + "<br><button data-id='" + id + "'>Usba</button></div>";
+      });
+      html += "<div class='btns'><button class='cno'>Sirad-i</button></div></div>";
+      bg.innerHTML = html;
+      document.body.appendChild(bg);
+      bg.querySelector(".cno").onclick = function () { closeModal(bg); };
+      bg.addEventListener("mousedown", function (e) { if (e.target === bg) closeModal(bg); });
+      Array.prototype.forEach.call(bg.querySelectorAll("button[data-id]"), function (b) {
+        b.onclick = function () { closeModal(bg); openComment(b.getAttribute("data-id")); };
+      });
+    }
+
+    $("b-cmt").addEventListener("click", function () { openComment(selId); });
+    $("b-cmts").addEventListener("click", listComments);
+    $("b-undo").addEventListener("click", undo);
+
+    // ---------- Right-click menu (comment + edit text) ----------
+    var ctx = $("ctx");
+    table.addEventListener("contextmenu", function (e) {
+      var td = e.target.closest ? e.target.closest("td[data-id]") : null;
+      if (!td) return;
+      e.preventDefault();
+      selectCell(td);
+      ctx.style.left = Math.min(e.clientX, window.innerWidth - 230) + "px";
+      ctx.style.top = Math.min(e.clientY, window.innerHeight - 260) + "px";
+      ctx.style.display = "block";
+    });
+    document.addEventListener("click", function () { ctx.style.display = "none"; });
+    ctx.addEventListener("click", function (e) {
+      var a = e.target.getAttribute && e.target.getAttribute("data-a");
+      ctx.style.display = "none";
+      if (a === "cmt") openComment(selId);
+      else if (a === "rmcmt") {
+        var key = curKey();
+        if (selId && X.comments[key] && X.comments[key][selId]) {
+          snap(); delete X.comments[key][selId]; saveX(); render();
+        }
+      } else if (a === "edit") startEdit(selectedTd());
+    });
+
+    // I-render balik aron mo-gamit na ang bag-ong effectiveCode, dayon i-enhance
+    render();
+    enhance();
+  })();
+  </script>
 </body>
 </html>
